@@ -17,10 +17,6 @@ var (
 	timeout = 60 * time.Second
 )
 
-const (
-	clonePath = "/tmp/repository"
-)
-
 func execute(c *cli.Context) error {
 	if c.NArg() != 0 {
 		if err := cli.ShowAppHelp(c); err != nil {
