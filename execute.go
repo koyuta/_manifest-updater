@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -9,6 +13,7 @@ import (
 
 	"github.com/koyuta/manifest-updater/pkg/registry"
 	"github.com/koyuta/manifest-updater/pkg/repository"
+
 	"github.com/urfave/cli"
 )
 
@@ -21,12 +26,12 @@ func execute(c *cli.Context) error {
 		return errors.New("")
 	}
 
-	var stop = make(chan struct{})
+	var shutdown = make(chan struct{})
 	go func() {
 		sigch := make(chan os.Signal, 1)
 		signal.Notify(sigch, syscall.SIGTERM)
 		<-sigch
-		stop <- struct{}{}
+		shutdown <- struct{}{}
 	}()
 
 	checkInterval := 1 * time.Minute
@@ -44,8 +49,35 @@ func execute(c *cli.Context) error {
 		),
 	)
 
+	var stoploop = make(chan struct{})
 	looper := NewUpdateLooper(updater, checkInterval)
-	looper.Loop(stop)
+	go func() {
+		if err := looper.Loop(stoploop); err != nil {
+			log.Fatalf("Loop: %v", err)
+		}
+	}()
 
+	srv := http.Server{Addr: ":8000", Handler: BuildRouter()}
+	go func() {
+		if err := srv.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("ListenAndServe: %v", err)
+		}
+	}()
+
+	<-shutdown
+	fmt.Println("shutting down...")
+
+	srctx, srcancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer srcancel()
+	if err := srv.Shutdown(srctx); err != nil {
+		log.Fatalf("server shutdown: %v", err)
+	}
+	loctx, locancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer locancel()
+	if err := looper.Shutdown(loctx); err != nil {
+		log.Fatalf("loop shutdown: %v", err)
+	}
+
+	fmt.Println("shutdown")
 	return nil
 }
