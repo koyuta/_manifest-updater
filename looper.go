@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 )
 
@@ -12,20 +14,32 @@ type UpdateLooper struct {
 	updater       *Updater
 	checkInterval time.Duration
 	// logger Logger
+
+	shutdown chan struct{}
+	done     chan struct{}
+
+	shuttingDown atomic.Value
 }
 
 func NewUpdateLooper(u *Updater, c time.Duration) *UpdateLooper {
 	return &UpdateLooper{updater: u, checkInterval: c}
 }
 
-func (u *UpdateLooper) Loop(stop <-chan struct{}) {
+func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
+	if v := u.shuttingDown.Load(); v != nil {
+		return errors.New("Shuting down error")
+	}
+
 	ticker := time.NewTicker(u.checkInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
+		case <-u.shutdown:
+			close(u.done)
+			return nil
 		case <-stop:
-			return
+			return nil
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
@@ -40,5 +54,18 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) {
 				fmt.Println(err)
 			}
 		}
+	}
+}
+
+func (u *UpdateLooper) Shutdown(ctx context.Context) error {
+	u.shuttingDown.Store(struct{}{})
+	close(u.shutdown)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-u.done:
+		u.shuttingDown = atomic.Value{}
+		return nil
 	}
 }
