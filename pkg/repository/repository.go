@@ -1,6 +1,8 @@
 package repository
 
+import "context"
+
 type Repository interface {
-	PushReplaceTagCommit(string) error
-	CreatePullRequest() error
+	PushReplaceTagCommit(context.Context, string) error
+	CreatePullRequest(context.Context) error
 }

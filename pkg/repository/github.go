@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/google/go-github/github"
-	"gopkg.in/src-d/go-git.v4"
+	git "gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
@@ -29,13 +29,13 @@ func NewGitHubRepository(u, b, p, i string) *GitHubRepository {
 	return &GitHubRepository{URL: u, Branch: b, Path: p, ImageName: i}
 }
 
-func (g *GitHubRepository) PushReplaceTagCommit(tag string) error {
+func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string) error {
 	clonepath, err := ioutil.TempDir(os.TempDir(), "_repository")
 	if err != nil {
 		return err
 	}
 
-	repository, err := git.PlainCloneContext(context.TODO(), clonepath, false, &git.CloneOptions{
+	repository, err := git.PlainCloneContext(ctx, clonepath, false, &git.CloneOptions{
 		URL:           g.URL,
 		SingleBranch:  true,
 		ReferenceName: plumbing.NewBranchReferenceName(g.Branch),
@@ -92,10 +92,10 @@ func (g *GitHubRepository) PushReplaceTagCommit(tag string) error {
 		return err
 	}
 
-	return repository.PushContext(context.TODO(), &git.PushOptions{})
+	return repository.PushContext(ctx, &git.PushOptions{})
 }
 
-func (g *GitHubRepository) CreatePullRequest() error {
+func (g *GitHubRepository) CreatePullRequest(ctx context.Context) error {
 	endpoint, err := transport.NewEndpoint(g.URL)
 	if err != nil {
 		return err
@@ -105,7 +105,7 @@ func (g *GitHubRepository) CreatePullRequest() error {
 
 	client := github.NewClient(nil)
 	_, _, err = client.PullRequests.Create(
-		context.TODO(), owner, reponame, &github.NewPullRequest{
+		ctx, owner, reponame, &github.NewPullRequest{
 			Title:               github.String("Automaticaly update image tags"),
 			Head:                github.String(BranchName),
 			Base:                github.String(g.Branch),

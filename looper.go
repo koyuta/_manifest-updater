@@ -6,34 +6,39 @@ import (
 	"time"
 )
 
+var timeout = 60 * time.Second
+
 type UpdateLooper struct {
-	Updater       *Updater
-	CheckInterval time.Duration
+	updater       *Updater
+	checkInterval time.Duration
+	// logger Logger
 }
 
 func NewUpdateLooper(u *Updater, c time.Duration) *UpdateLooper {
-	return &UpdateLooper{Updater: u, CheckInterval: c}
+	return &UpdateLooper{updater: u, checkInterval: c}
 }
 
-func (u *UpdateLooper) Loop(ctx context.Context, stop <-chan struct{}) {
-	var errch = make(chan error, 1)
-L:
+func (u *UpdateLooper) Loop(stop <-chan struct{}) {
+	ticker := time.NewTicker(u.checkInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-stop:
-			break L
-		case <-ctx.Done():
-			fmt.Println(ctx.Err())
-			time.Sleep(u.CheckInterval)
-		case err := <-errch:
-			fmt.Println(err)
-			time.Sleep(u.CheckInterval)
-		default:
-			if err := u.Updater.Run(ctx); err != nil {
-				errch <- err
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+
+			var errch = make(chan error, 1)
+			go func() { errch <- u.updater.Run(ctx) }()
+
+			select {
+			case <-ctx.Done():
+				fmt.Println(ctx.Err())
+			case err := <-errch:
+				fmt.Println(err)
 			}
-			time.Sleep(u.CheckInterval)
 		}
 	}
-	fmt.Println("Loop end")
 }

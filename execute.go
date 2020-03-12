@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"os"
 	"os/signal"
@@ -11,10 +10,6 @@ import (
 	"github.com/koyuta/manifest-updater/pkg/registry"
 	"github.com/koyuta/manifest-updater/pkg/repository"
 	"github.com/urfave/cli"
-)
-
-var (
-	timeout = 60 * time.Second
 )
 
 func execute(c *cli.Context) error {
@@ -34,10 +29,6 @@ func execute(c *cli.Context) error {
 		stop <- struct{}{}
 	}()
 
-	// Timeout for running a task
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
 	checkInterval := 1 * time.Minute
 
 	updater := NewUpdater(
@@ -54,7 +45,7 @@ func execute(c *cli.Context) error {
 	)
 
 	looper := NewUpdateLooper(updater, checkInterval)
-	looper.Loop(ctx, stop)
+	looper.Loop(stop)
 
 	return nil
 }

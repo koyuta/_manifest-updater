@@ -1,5 +1,7 @@
 package registry
 
+import "context"
+
 type Registry interface {
-	FetchLatestTag() (string, error)
+	FetchLatestTag(context.Context) (string, error)
 }

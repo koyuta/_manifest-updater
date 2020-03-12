@@ -18,12 +18,12 @@ func NewDockerHubRegistry(u, f string) *DockerHubRegistry {
 	return &DockerHubRegistry{URL: u, Filter: f}
 }
 
-func (d *DockerHubRegistry) FetchLatestTag() (string, error) {
+func (d *DockerHubRegistry) FetchLatestTag(ctx context.Context) (string, error) {
 	registry, err := name.NewRepository(d.URL)
 	if err != nil {
 		return "", err
 	}
-	tags, err := remote.ListWithContext(context.TODO(), registry)
+	tags, err := remote.ListWithContext(ctx, registry)
 	if len(tags) == 0 {
 		return "", errors.New("No tags found")
 	}
