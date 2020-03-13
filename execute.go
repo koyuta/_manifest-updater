@@ -11,8 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/koyuta/manifest-updater/pkg/registry"
-	"github.com/koyuta/manifest-updater/pkg/repository"
+	"github.com/koyuta/manifest-updater/updater"
 
 	"github.com/urfave/cli"
 )
@@ -36,21 +35,10 @@ func execute(c *cli.Context) error {
 
 	checkInterval := 1 * time.Minute
 
-	updater := NewUpdater(
-		registry.NewDockerHubRegistry(
-			c.String(registryDockerHubFlag.Name),
-			c.String(registryFilterFlag.Name),
-		),
-		repository.NewGitHubRepository(
-			c.String(repositoryGitFlag.Name),
-			c.String(repositoryBranchFlag.Name),
-			c.String(repositoryPathFlag.Name),
-			c.String(registryDockerHubFlag.Name),
-		),
-	)
+	var queue = make(chan *updater.Updater, 1)
 
 	var stoploop = make(chan struct{})
-	looper := NewUpdateLooper(updater, checkInterval)
+	looper := updater.NewUpdateLooper(queue, checkInterval)
 	go func() {
 		if err := looper.Loop(stoploop); err != nil {
 			log.Fatalf("Loop: %v", err)
