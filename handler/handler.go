@@ -10,7 +10,7 @@ import (
 )
 
 type Handler struct {
-	router *router.ChiRouter
+	router router.Router
 	queue  chan<- *updater.Updater
 }
 
