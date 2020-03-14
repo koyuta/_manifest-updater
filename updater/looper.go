@@ -42,7 +42,10 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 
 	for {
 		select {
-		case updater := <-u.queue:
+		case updater, ok := <-u.queue:
+			if !ok {
+				return errors.New("queue was closed")
+			}
 			u.updaters = append(u.updaters, *updater)
 		case <-u.shutdown:
 			close(u.done)
