@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/urfave/cli"
+	cli "github.com/urfave/cli/v2"
 )
 
 // Exit statuses
@@ -14,24 +14,7 @@ const (
 )
 
 var (
-	registryDockerHubFlag = cli.StringFlag{
-		Name:     "registry-docker-hub",
-		Required: true,
-	}
-	registryFilterFlag = cli.StringFlag{
-		Name: "registry-filter",
-	}
-	repositoryGitFlag = cli.StringFlag{
-		Name:     "repository-git",
-		Required: true,
-	}
-	repositoryBranchFlag = cli.StringFlag{
-		Name:  "repository-branch",
-		Value: "master",
-	}
-	repositoryPathFlag = cli.StringFlag{
-		Name: "repository-path",
-	}
+	portFlag = &cli.UintFlag{Name: "port", Aliases: []string{"p"}, Value: 8000}
 )
 
 func newApp() *cli.App {
@@ -39,13 +22,7 @@ func newApp() *cli.App {
 	app.Usage = ""
 	app.HideVersion = true
 
-	app.Flags = []cli.Flag{
-		registryDockerHubFlag,
-		registryFilterFlag,
-		repositoryGitFlag,
-		repositoryBranchFlag,
-		repositoryPathFlag,
-	}
+	app.Flags = []cli.Flag{portFlag}
 	app.Action = execute
 
 	return app

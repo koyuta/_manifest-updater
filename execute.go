@@ -13,7 +13,7 @@ import (
 
 	"github.com/koyuta/manifest-updater/updater"
 
-	"github.com/urfave/cli"
+	cli "github.com/urfave/cli/v2"
 )
 
 func execute(c *cli.Context) error {
