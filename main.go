@@ -14,7 +14,16 @@ const (
 )
 
 var (
-	portFlag = &cli.UintFlag{Name: "port", Aliases: []string{"p"}, Value: 8000}
+	portFlag = &cli.UintFlag{
+		Name:    "port",
+		Aliases: []string{"p"},
+		Value:   8000,
+	}
+	intervalFlag = &cli.Int64Flag{
+		Name:    "interval",
+		Aliases: []string{"i"},
+		Value:   60,
+	}
 )
 
 func newApp() *cli.App {
@@ -22,7 +31,7 @@ func newApp() *cli.App {
 	app.Usage = ""
 	app.HideVersion = true
 
-	app.Flags = []cli.Flag{portFlag}
+	app.Flags = []cli.Flag{portFlag, intervalFlag}
 	app.Action = execute
 
 	return app

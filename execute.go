@@ -33,7 +33,7 @@ func execute(c *cli.Context) error {
 		shutdown <- struct{}{}
 	}()
 
-	checkInterval := 1 * time.Minute
+	checkInterval := time.Duration(c.Int64(intervalFlag.Name)) * time.Second
 
 	var queue = make(chan *updater.Updater, 1)
 
@@ -45,7 +45,10 @@ func execute(c *cli.Context) error {
 		}
 	}()
 
-	srv := http.Server{Addr: ":8000", Handler: BuildRouter()}
+	srv := http.Server{
+		Addr:    fmt.Sprintf(":%d", c.Uint(portFlag.Name)),
+		Handler: BuildRouter(),
+	}
 	go func() {
 		if err := srv.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("ListenAndServe: %v", err)
