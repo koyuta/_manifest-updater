@@ -28,7 +28,7 @@ func execute(c *cli.Context) error {
 	var shutdown = make(chan struct{})
 	go func() {
 		sigch := make(chan os.Signal, 1)
-		signal.Notify(sigch, syscall.SIGTERM)
+		signal.Notify(sigch, syscall.SIGTERM, syscall.SIGINT)
 		<-sigch
 		shutdown <- struct{}{}
 	}()
