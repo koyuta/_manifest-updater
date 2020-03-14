@@ -47,7 +47,7 @@ func execute(c *cli.Context) error {
 
 	srv := http.Server{
 		Addr:    fmt.Sprintf(":%d", c.Uint(portFlag.Name)),
-		Handler: BuildRouter(),
+		Handler: BuildRouter(queue),
 	}
 	go func() {
 		if err := srv.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
