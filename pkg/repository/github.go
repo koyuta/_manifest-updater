@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/github"
 	git "gopkg.in/src-d/go-git.v4"
@@ -16,6 +18,8 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
+
+var nowFunc = time.Now
 
 var BranchName = "feature/update-tag"
 
@@ -49,10 +53,14 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 		return err
 	}
 
+	var branch = plumbing.Master
+	if g.Branch != "" {
+		branch = plumbing.NewBranchReferenceName(g.Branch)
+	}
 	var cloneOpts = &git.CloneOptions{
 		URL:           g.URL,
 		SingleBranch:  true,
-		ReferenceName: plumbing.NewBranchReferenceName(g.Branch),
+		ReferenceName: branch,
 	}
 	if pemFile := g.KeyFilePath; pemFile != "" {
 		k, err := ssh.NewPublicKeysFromFile("git", pemFile, "")
@@ -78,38 +86,42 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 		return err
 	}
 
-	var paths = []string{}
+	re := regexp.MustCompile(fmt.Sprintf(`%s: *(?P<tag>\w[\w-\.]{0,127})`, g.ImageName))
 	if err = filepath.Walk(
 		filepath.Join(clonepath, g.Path),
 		func(path string, info os.FileInfo, err error) error {
-			if !info.IsDir() {
-				paths = append(paths, path)
+			if info.IsDir() {
+				return nil
+			}
+			if strings.HasPrefix(path, filepath.Join(clonepath, ".git")) {
+				return nil
+			}
+
+			content, err := ioutil.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			replacedContent := re.ReplaceAll(content, []byte(fmt.Sprintf("%s:%s", g.ImageName, tag)))
+			if err := ioutil.WriteFile(path, replacedContent, 0); err != nil {
+				return err
+			}
+			if !bytes.Equal(content, replacedContent) {
+				prefix := fmt.Sprintf("%s/", clonepath)
+				if _, err := worktree.Add(strings.TrimPrefix(path, prefix)); err != nil {
+					return err
+				}
 			}
 			return nil
 		}); err != nil {
 		return err
 	}
 
-	re := regexp.MustCompile(fmt.Sprintf(`%s: *(?P<tag>\w[\w-\.]+)`, g.ImageName))
-	for _, p := range paths {
-		content, err := ioutil.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		replacedContent := re.ReplaceAll(content, []byte(tag))
-		if err := ioutil.WriteFile(p, replacedContent, 0); err != nil {
-			return err
-		}
-		if _, err := worktree.Add(p); err != nil {
-			return err
-		}
-	}
-
 	msg := ":up: Update image tag names from manifests"
 	if _, err := worktree.Commit(msg, &git.CommitOptions{
 		All: true,
-		Committer: &object.Signature{
+		Author: &object.Signature{
 			Name: "manifest-updater",
+			When: nowFunc(),
 		},
 	}); err != nil {
 		return err
