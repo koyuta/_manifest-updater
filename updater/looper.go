@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var timeout = 60 * time.Second
+var timeout = 20 * time.Second
 
 type UpdateLooper struct {
 	updaters      []*Updater
