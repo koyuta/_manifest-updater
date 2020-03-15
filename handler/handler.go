@@ -4,15 +4,13 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/koyuta/manifest-updater/pkg/registry"
-	"github.com/koyuta/manifest-updater/pkg/repository"
 	"github.com/koyuta/manifest-updater/pkg/router"
 	"github.com/koyuta/manifest-updater/updater"
 )
 
 type Handler struct {
 	router router.Router
-	queue  chan<- *updater.Updater
+	queue  chan<- *updater.Entry
 }
 
 type PostRequest struct {
@@ -23,7 +21,7 @@ type PostRequest struct {
 	Path      string `json:"path"`
 }
 
-func (p *PostRequest) Unmarshal() (*updater.Updater, error) {
+func (p *PostRequest) Unmarshal() (*updater.Entry, error) {
 	// TODO: Add supports for other registry providers.
 	if p.DockerHub == "" {
 		return nil, errors.New("dockerHub must be specified")
@@ -32,14 +30,17 @@ func (p *PostRequest) Unmarshal() (*updater.Updater, error) {
 		return nil, errors.New("git must be specified")
 	}
 
-	updater := updater.NewUpdater(
-		registry.NewDockerHubRegistry(p.DockerHub, p.Filter),
-		repository.NewGitHubRepository(p.Git, p.Branch, p.Path, p.DockerHub),
-	)
-	return updater, nil
+	entry := &updater.Entry{
+		DockerHub: p.DockerHub,
+		Filter:    p.Filter,
+		Git:       p.Git,
+		Branch:    p.Branch,
+		Path:      p.Path,
+	}
+	return entry, nil
 }
 
-func NewHandler(r router.Router, q chan<- *updater.Updater) *Handler {
+func NewHandler(r router.Router, q chan<- *updater.Entry) *Handler {
 	return &Handler{router: r, queue: q}
 }
 

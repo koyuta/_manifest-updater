@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -11,18 +12,20 @@ import (
 var timeout = 60 * time.Second
 
 type UpdateLooper struct {
-	updaters      []Updater
+	updaters      []*Updater
 	checkInterval time.Duration
 	// logger Logger
 
-	queue <-chan *Updater
+	keyFilePath string
+
+	queue <-chan *Entry
 
 	shutdown     chan struct{}
 	done         chan struct{}
 	shuttingDown *atomic.Value
 }
 
-func NewUpdateLooper(queue <-chan *Updater, c time.Duration) *UpdateLooper {
+func NewUpdateLooper(queue <-chan *Entry, c time.Duration, keyFilePath string) *UpdateLooper {
 	return &UpdateLooper{
 		queue:         queue,
 		checkInterval: c,
@@ -40,26 +43,33 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 	ticker := time.NewTicker(u.checkInterval)
 	defer ticker.Stop()
 
+	wg := &sync.WaitGroup{}
+
 	for {
 		select {
-		case updater, ok := <-u.queue:
+		case entry, ok := <-u.queue:
 			if !ok {
 				return errors.New("queue was closed")
 			}
-			u.updaters = append(u.updaters, *updater)
+			u.updaters = append(u.updaters, NewUpdater(entry, u.keyFilePath))
 		case <-u.shutdown:
+			wg.Wait()
 			close(u.done)
 			return nil
 		case <-stop:
+			wg.Wait()
 			return nil
 		case <-ticker.C:
 			for i := range u.updaters {
 				updater := u.updaters[i]
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), timeout)
-					defer cancel()
 
-					var errch = make(chan error, 1)
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				defer cancel()
+
+				var errch = make(chan error, 1)
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
 					errch <- updater.Run(ctx)
 
 					select {

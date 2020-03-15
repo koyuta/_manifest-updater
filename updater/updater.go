@@ -7,13 +7,33 @@ import (
 	"github.com/koyuta/manifest-updater/pkg/repository"
 )
 
+type Entry struct {
+	DockerHub string
+	Filter    string
+	Git       string
+	Branch    string
+	Path      string
+}
+
 type Updater struct {
 	Registry   registry.Registry
 	Repository repository.Repository
 }
 
-func NewUpdater(regi registry.Registry, repo repository.Repository) *Updater {
-	return &Updater{Registry: regi, Repository: repo}
+func NewUpdater(entry *Entry, keyFile string) *Updater {
+	return &Updater{
+		Registry: registry.NewDockerHubRegistry(
+			entry.DockerHub,
+			entry.Filter,
+		),
+		Repository: repository.NewGitHubRepository(
+			entry.Git,
+			entry.Branch,
+			entry.Path,
+			entry.DockerHub,
+			keyFile,
+		),
+	}
 }
 
 func (u *Updater) Run(ctx context.Context) error {

@@ -24,6 +24,10 @@ var (
 		Aliases: []string{"i"},
 		Value:   60,
 	}
+	keyFlag = &cli.StringFlag{
+		Name:    "key",
+		Aliases: []string{"k"},
+	}
 )
 
 func newApp() *cli.App {
@@ -31,7 +35,7 @@ func newApp() *cli.App {
 	app.Usage = ""
 	app.HideVersion = true
 
-	app.Flags = []cli.Flag{portFlag, intervalFlag}
+	app.Flags = []cli.Flag{portFlag, intervalFlag, keyFlag}
 	app.Action = execute
 
 	return app

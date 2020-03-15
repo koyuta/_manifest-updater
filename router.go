@@ -12,7 +12,7 @@ import (
 )
 
 // BuildRouter builds a http router.
-func BuildRouter(queue chan<- *updater.Updater) http.Handler {
+func BuildRouter(queue chan<- *updater.Entry) http.Handler {
 	var chiContext = router.NewChiRouter()
 	var h = handler.NewHandler(chiContext, queue)
 

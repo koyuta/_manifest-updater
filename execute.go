@@ -35,10 +35,10 @@ func execute(c *cli.Context) error {
 
 	checkInterval := time.Duration(c.Int64(intervalFlag.Name)) * time.Second
 
-	var queue = make(chan *updater.Updater, 1)
+	var queue = make(chan *updater.Entry, 1)
 
 	var stoploop = make(chan struct{})
-	looper := updater.NewUpdateLooper(queue, checkInterval)
+	looper := updater.NewUpdateLooper(queue, checkInterval, c.String(keyFlag.Name))
 	go func() {
 		if err := looper.Loop(stoploop); err != nil {
 			log.Fatalf("Loop: %v", err)

@@ -14,32 +14,55 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
+	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
 
 var BranchName = "feature/update-tag"
 
 type GitHubRepository struct {
-	URL       string
-	Branch    string
-	Path      string
-	ImageName string
+	URL         string
+	Branch      string
+	Path        string
+	ImageName   string
+	KeyFilePath string
 }
 
-func NewGitHubRepository(u, b, p, i string) *GitHubRepository {
-	return &GitHubRepository{URL: u, Branch: b, Path: p, ImageName: i}
+func NewGitHubRepository(u, b, p, i, k string) *GitHubRepository {
+	return &GitHubRepository{
+		URL:         u,
+		Branch:      b,
+		Path:        p,
+		ImageName:   i,
+		KeyFilePath: k,
+	}
 }
 
 func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string) error {
-	clonepath, err := ioutil.TempDir(os.TempDir(), "_repository")
+	endpoint, err := transport.NewEndpoint(g.URL)
+	if err != nil {
+		return err
+	}
+	repodir := g.extractRepositoryFromEndpoint(endpoint)
+
+	clonepath, err := ioutil.TempDir(os.TempDir(), repodir)
 	if err != nil {
 		return err
 	}
 
-	repository, err := git.PlainCloneContext(ctx, clonepath, false, &git.CloneOptions{
+	var cloneOpts = &git.CloneOptions{
 		URL:           g.URL,
 		SingleBranch:  true,
 		ReferenceName: plumbing.NewBranchReferenceName(g.Branch),
-	})
+	}
+	if pemFile := g.KeyFilePath; pemFile != "" {
+		k, err := ssh.NewPublicKeysFromFile("git", pemFile, "")
+		if err != nil {
+			return err
+		}
+		cloneOpts.Auth = k
+	}
+
+	repository, err := git.PlainCloneContext(ctx, clonepath, false, cloneOpts)
 	if err != nil {
 		return err
 	}
@@ -100,21 +123,30 @@ func (g *GitHubRepository) CreatePullRequest(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	path := strings.Split(endpoint.Path, "/")
-	owner, reponame := path[0], path[1]
+
+	owner := g.extractOwnerFromEndpoint(endpoint)
+	repoistory := g.extractRepositoryFromEndpoint(endpoint)
+	pullRequest := &github.NewPullRequest{
+		Title:               github.String("Automaticaly update image tags"),
+		Head:                github.String(BranchName),
+		Base:                github.String(g.Branch),
+		Body:                github.String(""),
+		MaintainerCanModify: github.Bool(true),
+	}
 
 	client := github.NewClient(nil)
-	_, _, err = client.PullRequests.Create(
-		ctx, owner, reponame, &github.NewPullRequest{
-			Title:               github.String("Automaticaly update image tags"),
-			Head:                github.String(BranchName),
-			Base:                github.String(g.Branch),
-			Body:                github.String(""),
-			MaintainerCanModify: github.Bool(true),
-		},
-	)
+	_, _, err = client.PullRequests.Create(ctx, owner, repoistory, pullRequest)
 	return err
 }
 
-type GitHubEnterpriseRepository struct {
+func (g *GitHubRepository) extractOwnerFromEndpoint(endpoint *transport.Endpoint) string {
+	path := strings.Split(endpoint.Path, "/")
+	owner := path[0]
+	return owner
+}
+
+func (g *GitHubRepository) extractRepositoryFromEndpoint(endpoint *transport.Endpoint) string {
+	path := strings.Split(endpoint.Path, "/")
+	repo := path[1]
+	return repo
 }
