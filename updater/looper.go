@@ -12,7 +12,7 @@ import (
 var timeout = 20 * time.Second
 
 type UpdateLooper struct {
-	updaters      []*Updater
+	entries       []*Entry
 	checkInterval time.Duration
 	// logger Logger
 
@@ -43,7 +43,9 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 	ticker := time.NewTicker(u.checkInterval)
 	defer ticker.Stop()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
+
+	var repoLocker = map[string]sync.Locker{}
 
 	for {
 		select {
@@ -51,7 +53,8 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 			if !ok {
 				return errors.New("queue was closed")
 			}
-			u.updaters = append(u.updaters, NewUpdater(entry, u.keyFilePath))
+			u.entries = append(u.entries, entry)
+			repoLocker[entry.Git] = &sync.Mutex{}
 		case <-u.shutdown:
 			wg.Wait()
 			close(u.done)
@@ -60,16 +63,23 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 			wg.Wait()
 			return nil
 		case <-ticker.C:
-			for i := range u.updaters {
-				updater := u.updaters[i]
+			for i := range u.entries {
+				entry := u.entries[i]
+
+				updater := NewUpdater(entry, u.keyFilePath)
 
 				ctx, cancel := context.WithTimeout(context.Background(), timeout)
 				defer cancel()
 
+				mux := repoLocker[entry.Git]
+
 				var errch = make(chan error, 1)
 				wg.Add(1)
 				go func() {
+					mux.Lock()
+					defer mux.Unlock()
 					defer wg.Done()
+
 					errch <- updater.Run(ctx)
 
 					select {
