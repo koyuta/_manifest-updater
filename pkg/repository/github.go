@@ -3,6 +3,7 @@ package repository
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -18,6 +19,8 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
+
+var ErrTagNotReplaced = errors.New("tag not replaced")
 
 var nowFunc = time.Now
 
@@ -115,6 +118,16 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 		}); err != nil {
 		return err
 	}
+	status, err := worktree.Status()
+	if err != nil {
+		return err
+	}
+
+	// To prevent non-fast-forward error, do not commit and push
+	// if no file was modified.
+	if status.IsClean() {
+		return ErrTagNotReplaced
+	}
 
 	msg := ":up: Update image tag names from manifests"
 	if _, err := worktree.Commit(msg, &git.CommitOptions{
@@ -126,7 +139,6 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 	}); err != nil {
 		return err
 	}
-
 	return repository.PushContext(ctx, &git.PushOptions{})
 }
 
