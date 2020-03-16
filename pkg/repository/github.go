@@ -49,43 +49,64 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 	if err != nil {
 		return err
 	}
-	repodir := g.extractRepositoryFromEndpoint(endpoint)
-
-	clonepath, err := ioutil.TempDir(os.TempDir(), repodir)
-	if err != nil {
-		return err
-	}
 
 	var branch = plumbing.Master
 	if g.Branch != "" {
 		branch = plumbing.NewBranchReferenceName(g.Branch)
 	}
-	var cloneOpts = &git.CloneOptions{
-		URL:           g.URL,
-		SingleBranch:  true,
-		ReferenceName: branch,
-	}
+
+	clonepath := filepath.Join(
+		os.TempDir(),
+		g.extractOwnerFromEndpoint(endpoint),
+		g.extractRepositoryFromEndpoint(endpoint),
+	)
+
+	var auth transport.AuthMethod
 	if pemFile := g.KeyFilePath; pemFile != "" {
-		k, err := ssh.NewPublicKeysFromFile("git", pemFile, "")
+		auth, err = ssh.NewPublicKeysFromFile("git", pemFile, "")
 		if err != nil {
 			return err
 		}
-		cloneOpts.Auth = k
 	}
 
-	repository, err := git.PlainCloneContext(ctx, clonepath, false, cloneOpts)
-	if err != nil {
-		return err
+	var repository *git.Repository
+	if _, err := os.Stat(clonepath); os.IsNotExist(err) {
+		opts := &git.CloneOptions{
+			URL:           g.URL,
+			SingleBranch:  true,
+			ReferenceName: branch,
+			Auth:          auth,
+		}
+		repository, err = git.PlainCloneContext(ctx, clonepath, false, opts)
+		if err != nil {
+			return err
+		}
+	} else {
+		repository, err = git.PlainOpen(clonepath)
+		if err != nil {
+			return err
+		}
 	}
 	worktree, err := repository.Worktree()
 	if err != nil {
 		return err
 	}
-
-	if err := worktree.Checkout(&git.CheckoutOptions{
-		Create: true,
-		Branch: plumbing.NewBranchReferenceName(BranchName),
+	if err := worktree.PullContext(ctx, &git.PullOptions{
+		Force:         true,
+		SingleBranch:  true,
+		ReferenceName: branch,
+		Auth:          auth,
 	}); err != nil {
+		return err
+	}
+
+	checkoutOpts := &git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName(BranchName),
+	}
+	if _, err = repository.Branch(BranchName); errors.Is(err, git.ErrBranchNotFound) {
+		checkoutOpts.Create = true
+	}
+	if err := worktree.Checkout(checkoutOpts); err != nil {
 		return err
 	}
 
@@ -118,6 +139,7 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 		}); err != nil {
 		return err
 	}
+
 	status, err := worktree.Status()
 	if err != nil {
 		return err
@@ -125,7 +147,7 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 
 	// To prevent non-fast-forward error, do not commit and push
 	// if no file was modified.
-	if status.IsClean() {
+	if len(status) == 0 {
 		return ErrTagNotReplaced
 	}
 
