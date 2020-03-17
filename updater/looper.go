@@ -3,10 +3,12 @@ package updater
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/logger"
+	"golang.org/x/sync/semaphore"
 )
 
 var timeout = 20 * time.Second
@@ -14,7 +16,7 @@ var timeout = 20 * time.Second
 type UpdateLooper struct {
 	entries       []*Entry
 	checkInterval time.Duration
-	// logger Logger
+	logger        *logger.Logger
 
 	keyFilePath string
 
@@ -25,10 +27,11 @@ type UpdateLooper struct {
 	shuttingDown *atomic.Value
 }
 
-func NewUpdateLooper(queue <-chan *Entry, c time.Duration, keyFilePath string) *UpdateLooper {
+func NewUpdateLooper(queue <-chan *Entry, c time.Duration, logger *logger.Logger, keyFilePath string) *UpdateLooper {
 	return &UpdateLooper{
 		queue:         queue,
 		checkInterval: c,
+		logger:        logger,
 		shutdown:      make(chan struct{}),
 		done:          make(chan struct{}),
 		shuttingDown:  &atomic.Value{},
@@ -37,21 +40,24 @@ func NewUpdateLooper(queue <-chan *Entry, c time.Duration, keyFilePath string) *
 
 func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 	if v := u.shuttingDown.Load(); v != nil {
-		return errors.New("Shuting down error")
+		return errors.New("Looper is shutting down")
 	}
 
 	ticker := time.NewTicker(u.checkInterval)
 	defer ticker.Stop()
 
-	var wg sync.WaitGroup
-
-	var repoLocker = map[string]sync.Locker{}
+	var (
+		wg         = sync.WaitGroup{}
+		sem        = semaphore.NewWeighted(10)
+		repoLocker = map[string]sync.Locker{}
+	)
 
 	for {
 		select {
 		case entry, ok := <-u.queue:
+			u.logger.Info("Recieved a new job")
 			if !ok {
-				return errors.New("queue was closed")
+				return errors.New("Queue was closed")
 			}
 			u.entries = append(u.entries, entry)
 			repoLocker[entry.Git] = &sync.Mutex{}
@@ -71,22 +77,26 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 				ctx, cancel := context.WithTimeout(context.Background(), timeout)
 				defer cancel()
 
-				mux := repoLocker[entry.Git]
-
 				var errch = make(chan error, 1)
+				mux := repoLocker[entry.Git]
+				sem.Acquire(context.Background(), 1)
 				wg.Add(1)
 				go func() {
+					defer func() {
+						mux.Unlock()
+						sem.Release(1)
+						wg.Done()
+					}()
+
 					mux.Lock()
-					defer mux.Unlock()
-					defer wg.Done()
 
 					errch <- updater.Run(ctx)
 
 					select {
 					case <-ctx.Done():
-						fmt.Println(ctx.Err())
+						u.logger.Error(ctx.Err())
 					case err := <-errch:
-						fmt.Println(err)
+						u.logger.Error(err)
 					}
 				}()
 			}

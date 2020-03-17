@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/logger"
 	"github.com/koyuta/manifest-updater/updater"
 
 	cli "github.com/urfave/cli/v2"
@@ -33,15 +34,21 @@ func execute(c *cli.Context) error {
 		shutdown <- struct{}{}
 	}()
 
-	checkInterval := time.Duration(c.Int64(intervalFlag.Name)) * time.Second
+	l := logger.Init("main", false, false, os.Stdout)
+	logger.SetFlags(log.Ldate | log.Ltime)
+	defer l.Close()
 
-	var queue = make(chan *updater.Entry, 1)
+	var (
+		queue         = make(chan *updater.Entry, 1)
+		checkInterval = time.Duration(c.Int64(intervalFlag.Name)) * time.Second
+		key           = c.String(keyFlag.Name)
+	)
+	looper := updater.NewUpdateLooper(queue, checkInterval, l, key)
 
 	var stoploop = make(chan struct{})
-	looper := updater.NewUpdateLooper(queue, checkInterval, c.String(keyFlag.Name))
 	go func() {
 		if err := looper.Loop(stoploop); err != nil {
-			log.Fatalf("Loop: %v", err)
+			logger.Fatalf("Loop: %v", err)
 		}
 	}()
 
@@ -51,24 +58,24 @@ func execute(c *cli.Context) error {
 	}
 	go func() {
 		if err := srv.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("ListenAndServe: %v", err)
+			logger.Fatalf("ListenAndServe: %v", err)
 		}
 	}()
 
 	<-shutdown
-	fmt.Println("shutting down...")
+	logger.Info("Shutting down...")
 
 	srctx, srcancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer srcancel()
 	if err := srv.Shutdown(srctx); err != nil {
-		log.Fatalf("server shutdown: %v", err)
+		logger.Fatalf("Shutdown server: %v", err)
 	}
 	loctx, locancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer locancel()
 	if err := looper.Shutdown(loctx); err != nil {
-		log.Fatalf("loop shutdown: %v", err)
+		logger.Fatalf("Shutdown loop: %v", err)
 	}
 
-	fmt.Println("shutdown")
+	logger.Info("Shutdown")
 	return nil
 }
