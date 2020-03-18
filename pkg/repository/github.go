@@ -160,7 +160,7 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 		return ErrTagNotReplaced
 	}
 
-	msg := ":up: Update image tag names from manifests"
+	msg := "Update image tag names"
 	if _, err := worktree.Commit(msg, &git.CommitOptions{
 		All: true,
 		Author: &object.Signature{
@@ -207,6 +207,5 @@ func (g *GitHubRepository) extractOwnerFromEndpoint(endpoint *transport.Endpoint
 
 func (g *GitHubRepository) extractRepositoryFromEndpoint(endpoint *transport.Endpoint) string {
 	path := strings.Split(endpoint.Path, "/")
-	repo := path[1]
-	return repo
+	return strings.TrimSuffix(path[1], ".git")
 }

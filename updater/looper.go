@@ -100,6 +100,8 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 					case err := <-errch:
 						if err != nil {
 							u.logger.Error(err)
+						} else {
+							u.logger.Info("Pull request was created")
 						}
 					}
 				}()
