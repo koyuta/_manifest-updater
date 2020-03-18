@@ -91,13 +91,22 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 	if err != nil {
 		return err
 	}
-	if err := worktree.PullContext(ctx, &git.PullOptions{
+
+	err = worktree.PullContext(ctx, &git.PullOptions{
 		Force:         true,
 		SingleBranch:  true,
 		ReferenceName: branch,
 		Auth:          auth,
-	}); err != nil {
-		return err
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, git.NoErrAlreadyUpToDate):
+			return nil
+		case errors.Is(err, git.ErrNonFastForwardUpdate):
+			return nil
+		default:
+			return err
+		}
 	}
 
 	checkoutOpts := &git.CheckoutOptions{
@@ -161,7 +170,12 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 	}); err != nil {
 		return err
 	}
-	return repository.PushContext(ctx, &git.PushOptions{})
+
+	err = repository.PushContext(ctx, &git.PushOptions{})
+	if err != nil && !errors.Is(err, git.ErrNonFastForwardUpdate) {
+		return err
+	}
+	return repository.DeleteBranch(BranchName)
 }
 
 func (g *GitHubRepository) CreatePullRequest(ctx context.Context) error {
