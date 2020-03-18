@@ -2,12 +2,13 @@ package updater
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/google/logger"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -16,7 +17,7 @@ var timeout = 20 * time.Second
 type UpdateLooper struct {
 	entries       []*Entry
 	checkInterval time.Duration
-	logger        *logger.Logger
+	logger        *logrus.Logger
 
 	keyFilePath string
 
@@ -27,7 +28,7 @@ type UpdateLooper struct {
 	shuttingDown *atomic.Value
 }
 
-func NewUpdateLooper(queue <-chan *Entry, c time.Duration, logger *logger.Logger, keyFilePath string) *UpdateLooper {
+func NewUpdateLooper(queue <-chan *Entry, c time.Duration, logger *logrus.Logger, keyFilePath string) *UpdateLooper {
 	return &UpdateLooper{
 		queue:         queue,
 		checkInterval: c,
@@ -55,10 +56,11 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 	for {
 		select {
 		case entry, ok := <-u.queue:
-			u.logger.Info("Recieved a new job")
 			if !ok {
 				return errors.New("Queue was closed")
 			}
+			j, _ := json.Marshal(entry)
+			u.logger.Infof("Recieved a entry: %s", string(j))
 			u.entries = append(u.entries, entry)
 			repoLocker[entry.Git] = &sync.Mutex{}
 		case <-u.shutdown:
@@ -96,7 +98,9 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 					case <-ctx.Done():
 						u.logger.Error(ctx.Err())
 					case err := <-errch:
-						u.logger.Error(err)
+						if err != nil {
+							u.logger.Error(err)
+						}
 					}
 				}()
 			}

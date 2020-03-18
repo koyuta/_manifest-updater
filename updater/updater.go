@@ -8,11 +8,11 @@ import (
 )
 
 type Entry struct {
-	DockerHub string
-	Filter    string
-	Git       string
-	Branch    string
-	Path      string
+	DockerHub string `json:"dockerHub"`
+	Filter    string `json:"filter,omitempty"`
+	Git       string `json:"git"`
+	Branch    string `json:"branch,omitempty"`
+	Path      string `json:"path,omitempty"`
 }
 
 type Updater struct {

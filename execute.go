@@ -4,15 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/google/logger"
 	"github.com/koyuta/manifest-updater/updater"
+	"github.com/sirupsen/logrus"
 
 	cli "github.com/urfave/cli/v2"
 )
@@ -34,16 +33,15 @@ func execute(c *cli.Context) error {
 		shutdown <- struct{}{}
 	}()
 
-	l := logger.Init("main", false, false, os.Stdout)
-	logger.SetFlags(log.Ldate | log.Ltime)
-	defer l.Close()
+	var logger = logrus.New()
+	logger.Out = os.Stdout
 
 	var (
 		queue         = make(chan *updater.Entry, 1)
 		checkInterval = time.Duration(c.Int64(intervalFlag.Name)) * time.Second
 		key           = c.String(keyFlag.Name)
 	)
-	looper := updater.NewUpdateLooper(queue, checkInterval, l, key)
+	looper := updater.NewUpdateLooper(queue, checkInterval, logger, key)
 
 	var stoploop = make(chan struct{})
 	go func() {
