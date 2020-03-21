@@ -24,7 +24,10 @@ var ErrTagNotReplaced = errors.New("tag not replaced")
 
 var nowFunc = time.Now
 
-var BranchName = "feature/update-tag"
+var (
+	BranchName      = "feature/update-tag"
+	DefaultCloneDir = "/tmp"
+)
 
 type GitHubRepository struct {
 	URL         string
@@ -56,7 +59,7 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 	}
 
 	clonepath := filepath.Join(
-		os.TempDir(),
+		DefaultCloneDir,
 		g.extractOwnerFromEndpoint(endpoint),
 		g.extractRepositoryFromEndpoint(endpoint),
 	)

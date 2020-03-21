@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/koyuta/manifest-updater/pkg/repository"
 	"github.com/koyuta/manifest-updater/updater"
 	"github.com/sirupsen/logrus"
 
@@ -24,6 +26,15 @@ func execute(c *cli.Context) error {
 		// Return empty error to set 1 to exit status.
 		return errors.New("")
 	}
+
+	baseDir, err := ioutil.TempDir(os.TempDir(), "manifest-updater")
+	if err != nil {
+		return err
+	}
+	repository.DefaultCloneDir = baseDir
+	defer func() {
+		fmt.Println("err:", os.RemoveAll(baseDir))
+	}()
 
 	var shutdown = make(chan struct{})
 	go func() {
@@ -62,6 +73,9 @@ func execute(c *cli.Context) error {
 
 	<-shutdown
 	logger.Info("Shutting down...")
+
+	// Cleanup a base directory
+	os.RemoveAll(baseDir)
 
 	srctx, srcancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer srcancel()
