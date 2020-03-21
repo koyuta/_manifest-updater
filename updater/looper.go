@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/koyuta/manifest-updater/pkg/repository"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/semaphore"
 )
@@ -99,10 +100,14 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 					case <-ctx.Done():
 						u.logger.Error(fmt.Errorf("Updater: %w", ctx.Err()))
 					case err := <-errch:
-						if err != nil {
+						j, _ := json.Marshal(entry)
+						switch {
+						case errors.Is(err, repository.ErrTagAlreadyUpToDate):
+							u.logger.Infof("Image tag already up to date: %s", string(j))
+						case err != nil:
 							u.logger.Error(fmt.Errorf("Updater: %w", err))
-						} else {
-							u.logger.Info("Pull request was created")
+						default:
+							u.logger.Infof("Pull request was created: %s", string(j))
 						}
 					}
 				}()

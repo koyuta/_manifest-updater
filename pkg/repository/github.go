@@ -87,11 +87,15 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 	if err != nil {
 		return err
 	}
-	if err := worktree.PullContext(ctx, &git.PullOptions{
+	err = worktree.PullContext(ctx, &git.PullOptions{
 		Force:         true,
 		SingleBranch:  true,
 		ReferenceName: branch,
-	}); !errors.Is(err, git.NoErrAlreadyUpToDate) {
+	})
+	if errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return ErrTagAlreadyUpToDate
+	}
+	if err != nil {
 		return err
 	}
 
@@ -170,7 +174,7 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 		return nil
 	}
 	if errors.Is(err, git.ErrNonFastForwardUpdate) {
-		return nil
+		return ErrTagAlreadyUpToDate
 	}
 	return err
 }
