@@ -11,6 +11,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2
 	github.com/urfave/cli/v2 v2.2.0
 	golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4 // indirect
+	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
 	gopkg.in/src-d/go-git.v4 v4.13.1
 )
