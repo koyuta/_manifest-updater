@@ -20,7 +20,7 @@ type Updater struct {
 	Repository repository.Repository
 }
 
-func NewUpdater(entry *Entry, keyFile string) *Updater {
+func NewUpdater(entry *Entry, token string) *Updater {
 	return &Updater{
 		Registry: registry.NewDockerHubRegistry(
 			entry.DockerHub,
@@ -31,7 +31,7 @@ func NewUpdater(entry *Entry, keyFile string) *Updater {
 			entry.Branch,
 			entry.Path,
 			entry.DockerHub,
-			keyFile,
+			token,
 		),
 	}
 }

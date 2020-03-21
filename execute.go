@@ -50,9 +50,9 @@ func execute(c *cli.Context) error {
 	var (
 		queue         = make(chan *updater.Entry, 1)
 		checkInterval = time.Duration(c.Int64(intervalFlag.Name)) * time.Second
-		key           = c.String(keyFlag.Name)
+		token         = c.String(tokenFlag.Name)
 	)
-	looper := updater.NewUpdateLooper(queue, checkInterval, logger, key)
+	looper := updater.NewUpdateLooper(queue, checkInterval, logger, token)
 
 	var stoploop = make(chan struct{})
 	go func() {

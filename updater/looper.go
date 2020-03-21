@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,7 +20,7 @@ type UpdateLooper struct {
 	checkInterval time.Duration
 	logger        *logrus.Logger
 
-	keyFilePath string
+	token string
 
 	queue <-chan *Entry
 
@@ -28,11 +29,12 @@ type UpdateLooper struct {
 	shuttingDown *atomic.Value
 }
 
-func NewUpdateLooper(queue <-chan *Entry, c time.Duration, logger *logrus.Logger, keyFilePath string) *UpdateLooper {
+func NewUpdateLooper(queue <-chan *Entry, c time.Duration, logger *logrus.Logger, token string) *UpdateLooper {
 	return &UpdateLooper{
 		queue:         queue,
 		checkInterval: c,
 		logger:        logger,
+		token:         token,
 		shutdown:      make(chan struct{}),
 		done:          make(chan struct{}),
 		shuttingDown:  &atomic.Value{},
@@ -73,11 +75,7 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 		case <-ticker.C:
 			for i := range u.entries {
 				entry := u.entries[i]
-
-				updater := NewUpdater(entry, u.keyFilePath)
-
-				ctx, cancel := context.WithTimeout(context.Background(), timeout)
-				defer cancel()
+				updater := NewUpdater(entry, u.token)
 
 				var errch = make(chan error, 1)
 				mux := repoLocker[entry.Git]
@@ -92,14 +90,17 @@ func (u *UpdateLooper) Loop(stop <-chan struct{}) error {
 
 					mux.Lock()
 
+					ctx, cancel := context.WithTimeout(context.Background(), timeout)
+					defer cancel()
+
 					errch <- updater.Run(ctx)
 
 					select {
 					case <-ctx.Done():
-						u.logger.Error(ctx.Err())
+						u.logger.Error(fmt.Errorf("Updater: %w", ctx.Err()))
 					case err := <-errch:
 						if err != nil {
-							u.logger.Error(err)
+							u.logger.Error(fmt.Errorf("Updater: %w", err))
 						} else {
 							u.logger.Info("Pull request was created")
 						}

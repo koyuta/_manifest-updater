@@ -13,14 +13,16 @@ import (
 	"time"
 
 	"github.com/google/go-github/github"
+	"golang.org/x/oauth2"
 	git "gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
-	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
 
-var ErrTagNotReplaced = errors.New("tag not replaced")
+var (
+	ErrTagNotReplaced = errors.New("tag not replaced")
+)
 
 var nowFunc = time.Now
 
@@ -30,20 +32,23 @@ var (
 )
 
 type GitHubRepository struct {
-	URL         string
-	Branch      string
-	Path        string
-	ImageName   string
-	KeyFilePath string
+	URL       string
+	Branch    string
+	Path      string
+	ImageName string
+	Token     string
 }
 
-func NewGitHubRepository(u, b, p, i, k string) *GitHubRepository {
+func NewGitHubRepository(u, b, p, i, t string) *GitHubRepository {
+	if b == "" {
+		b = "master"
+	}
 	return &GitHubRepository{
-		URL:         u,
-		Branch:      b,
-		Path:        p,
-		ImageName:   i,
-		KeyFilePath: k,
+		URL:       u,
+		Branch:    b,
+		Path:      p,
+		ImageName: i,
+		Token:     t,
 	}
 }
 
@@ -52,25 +57,13 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 	if err != nil {
 		return err
 	}
-
-	var branch = plumbing.Master
-	if g.Branch != "" {
-		branch = plumbing.NewBranchReferenceName(g.Branch)
-	}
-
 	clonepath := filepath.Join(
 		DefaultCloneDir,
 		g.extractOwnerFromEndpoint(endpoint),
 		g.extractRepositoryFromEndpoint(endpoint),
 	)
 
-	var auth transport.AuthMethod
-	if pemFile := g.KeyFilePath; pemFile != "" {
-		auth, err = ssh.NewPublicKeysFromFile("git", pemFile, "")
-		if err != nil {
-			return err
-		}
-	}
+	branch := plumbing.NewBranchReferenceName(g.Branch)
 
 	var repository *git.Repository
 	if _, err := os.Stat(clonepath); os.IsNotExist(err) {
@@ -78,7 +71,6 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 			URL:           g.URL,
 			SingleBranch:  true,
 			ReferenceName: branch,
-			Auth:          auth,
 		}
 		repository, err = git.PlainCloneContext(ctx, clonepath, false, opts)
 		if err != nil {
@@ -90,27 +82,23 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 			return err
 		}
 	}
+
 	worktree, err := repository.Worktree()
 	if err != nil {
 		return err
 	}
-
-	err = worktree.PullContext(ctx, &git.PullOptions{
+	if err := worktree.PullContext(ctx, &git.PullOptions{
 		Force:         true,
 		SingleBranch:  true,
 		ReferenceName: branch,
-		Auth:          auth,
-	})
-	if err != nil {
-		switch {
-		case errors.Is(err, git.NoErrAlreadyUpToDate):
-			return nil
-		case errors.Is(err, git.ErrNonFastForwardUpdate):
-			return nil
-		default:
-			return err
-		}
+	}); !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return err
 	}
+
+	defer func() {
+		worktree.Checkout(&git.CheckoutOptions{Branch: plumbing.Master})
+		repository.Storer.RemoveReference(plumbing.NewBranchReferenceName(BranchName))
+	}()
 
 	checkoutOpts := &git.CheckoutOptions{
 		Branch: plumbing.NewBranchReferenceName(BranchName),
@@ -175,10 +163,16 @@ func (g *GitHubRepository) PushReplaceTagCommit(ctx context.Context, tag string)
 	}
 
 	err = repository.PushContext(ctx, &git.PushOptions{})
-	if err != nil && !errors.Is(err, git.ErrNonFastForwardUpdate) {
-		return err
+	// Because of:
+	// https://github.com/src-d/go-git/blob/d6c4b113c17a011530e93f179b7ac27eb3f17b9b/remote.go#L784
+	// https://github.com/src-d/go-git/blob/d6c4b113c17a011530e93f179b7ac27eb3f17b9b/remote.go#L793
+	if strings.Contains(err.Error(), git.ErrNonFastForwardUpdate.Error()) {
+		return nil
 	}
-	return repository.DeleteBranch(BranchName)
+	if errors.Is(err, git.ErrNonFastForwardUpdate) {
+		return nil
+	}
+	return err
 }
 
 func (g *GitHubRepository) CreatePullRequest(ctx context.Context) error {
@@ -189,16 +183,18 @@ func (g *GitHubRepository) CreatePullRequest(ctx context.Context) error {
 
 	owner := g.extractOwnerFromEndpoint(endpoint)
 	repoistory := g.extractRepositoryFromEndpoint(endpoint)
-	pullRequest := &github.NewPullRequest{
+
+	client := github.NewClient(oauth2.NewClient(ctx, oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: g.Token},
+	)))
+
+	_, _, err = client.PullRequests.Create(ctx, owner, repoistory, &github.NewPullRequest{
 		Title:               github.String("Automaticaly update image tags"),
 		Head:                github.String(BranchName),
 		Base:                github.String(g.Branch),
 		Body:                github.String(""),
 		MaintainerCanModify: github.Bool(true),
-	}
-
-	client := github.NewClient(nil)
-	_, _, err = client.PullRequests.Create(ctx, owner, repoistory, pullRequest)
+	})
 	return err
 }
 
